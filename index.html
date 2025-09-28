@@ -1,137 +1,91 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>ASR + 网页端 TTS Demo</title>
-  <style>
-    body { font-family: system-ui, Arial; margin: 2rem; }
-    button { margin-right: .5rem; }
-    .box { background:#f6f7f8; padding:.75rem; border-radius:.5rem; white-space:pre-wrap; }
-    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:.5rem 0; }
-  </style>
+  <meta charset="UTF-8">
+  <title>aichat</title>
 </head>
 <body>
-  <h2>🎤 录音上传 → Whisper 转写 → 处理 → 网页端朗读</h2>
+  <h2>AICHAT</h2>
 
-  <div class="row">
-    <button id="startBtn">开始录音</button>
-    <button id="stopBtn" disabled>停止并上传</button>
-    <button id="speakBtn" disabled>朗读处理后的文本</button>
-  </div>
+  <label for="roleSelect">选择角色：</label>
+  <select id="roleSelect">
+    // 替换成选择的角色
+    <option value="c1">角色 c1</option>
+    <option value="c2">角色 c2</option>
+    <option value="c3">角色 c3</option>
+    <option value="c4">角色 c4</option>
+    <option value="c5">角色 c5</option>
+    <option value="c6">角色 c6</option>
+  </select>
 
-  <div>状态：<span id="status">待命</span></div>
+  <br><br>
+  <button id="startBtn">开始录音</button>
+  <button id="stopBtn" disabled>停止录音</button>
+  <button id="playBtn" disabled>▶ 朗读角色回复</button>
 
-  <h3>原始识别文本</h3>
-  <div id="rawBox" class="box">（等待上传…）</div>
+  <h3>识别原文：</h3>
+  <pre id="rawText"></pre>
 
-  <h3>处理后文本</h3>
-  <div id="procBox" class="box">（等待上传…）</div>
+  <h3>角色回复：</h3>
+  <pre id="processedText"></pre>
 
   <script>
-    let mediaRecorder, chunks = [], chosenMime = '';
-    let currentProcessedText = '';
-    let currentTTS = { lang: 'zh-CN', rate: 1.0, pitch: 1.0, voice: null };
+    let mediaRecorder;
+    let audioChunks = [];
 
-    const statusEl = document.getElementById('status');
-    const rawBox   = document.getElementById('rawBox');
-    const procBox  = document.getElementById('procBox');
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn  = document.getElementById('stopBtn');
-    const speakBtn = document.getElementById('speakBtn');
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const playBtn = document.getElementById("playBtn");
 
-    function pickMimeType() {
-      const candidates = [
-        'audio/webm;codecs=opus', 'audio/webm',
-        'audio/mp4', 'audio/aac', 'audio/wav'
-      ];
-      for (const m of candidates) {
-        if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) return m;
-      }
-      return '';
+    startBtn.onclick = async () => {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(audioChunks, { type: "audio/webm" });
+        sendBlob(blob);
+      };
+
+      mediaRecorder.start();
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      playBtn.disabled = true;
+    };
+
+    stopBtn.onclick = () => {
+      mediaRecorder.stop();
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    };
+
+    async function sendBlob(blob) {
+      const formData = new FormData();
+      formData.append("audio", blob, "recording.webm");
+
+      const role = document.getElementById("roleSelect").value;
+      formData.append("role", role);
+
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await res.json();
+
+      document.getElementById("rawText").innerText = data.raw_text || "[无识别结果]";
+      document.getElementById("processedText").innerText = data.processed_text || "[无回复]";
+
+      playBtn.disabled = false; // 启用朗读按钮
     }
 
-    async function startRecording() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        chosenMime = pickMimeType();
-        mediaRecorder = chosenMime ? new MediaRecorder(stream, { mimeType: chosenMime }) : new MediaRecorder(stream);
-        chunks = [];
-
-        mediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
-        mediaRecorder.onstart = () => {
-          statusEl.textContent = `录音中…（${chosenMime || '浏览器默认'}）`;
-          startBtn.disabled = true; stopBtn.disabled = false; speakBtn.disabled = true;
-          rawBox.textContent = '（录音中…）'; procBox.textContent = '（录音中…）';
-        };
-        mediaRecorder.onstop = async () => {
-          statusEl.textContent = '上传中…';
-          const blobType = chosenMime || 'audio/webm';
-          const ext = blobType.includes('mp4') ? 'mp4' : blobType.includes('aac') ? 'aac' : blobType.includes('wav') ? 'wav' : 'webm';
-          const blob = new Blob(chunks, { type: blobType });
-
-          const fd = new FormData();
-          fd.append('audio', blob, `recording.${ext}`);
-
-          const res = await fetch('/api/transcribe?language=zh', { method:'POST', body: fd });
-          const data = await res.json();
-          if (data.error) throw new Error(data.error);
-
-          rawBox.textContent  = data.raw_text || '';
-          procBox.textContent = data.processed_text || '';
-          currentProcessedText = data.processed_text || '';
-          currentTTS = Object.assign(currentTTS, data.tts || {});
-
-          statusEl.textContent = '完成';
-          speakBtn.disabled = !currentProcessedText;
-          startBtn.disabled = false; stopBtn.disabled = true;
-        };
-
-        mediaRecorder.start();
-      } catch (e) {
-        console.error(e);
-        statusEl.textContent = '录音失败：' + e.message;
-      }
-    }
-
-    function stopRecording() {
-      if (mediaRecorder && mediaRecorder.state === 'recording') {
-        mediaRecorder.stop();
-        statusEl.textContent = '结束录音…';
-      }
-    }
-
-    function speakTextBrowserTTS(text, tts) {
-      if (!text) return;
-      if (!('speechSynthesis' in window)) {
-        alert('当前浏览器不支持 speechSynthesis。请用 Edge/Chrome/Safari 等。');
-        return;
-      }
-      // 防止重叠
-      speechSynthesis.cancel();
-
-      const u = new SpeechSynthesisUtterance(text);
-      // 优先 voice 名称（若匹配失败再用 lang）
-      const voices = speechSynthesis.getVoices();
-      if (tts && tts.voice) {
-        const match = voices.find(v => v.name === tts.voice);
-        if (match) u.voice = match;
-      }
-      if (tts && tts.lang)  u.lang  = tts.lang;
-      if (tts && tts.rate)  u.rate  = Math.min(Math.max(Number(tts.rate)  || 1.0, 0.5), 2.0);
-      if (tts && tts.pitch) u.pitch = Math.min(Math.max(Number(tts.pitch) || 1.0, 0.0), 2.0);
-
-      speechSynthesis.speak(u);
-    }
-
-    startBtn.addEventListener('click', startRecording);
-    stopBtn.addEventListener('click',  stopRecording);
-    speakBtn.addEventListener('click', () => speakTextBrowserTTS(currentProcessedText, currentTTS));
-
-    // 某些浏览器需要等语音列表加载
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.onvoiceschanged = () => {};
-    }
+    playBtn.onclick = () => {
+      // 加上时间戳，防止浏览器缓存播放旧音频
+      const timestamp = Date.now();
+      const audio = new Audio(`/api/tts_audio?ts=${timestamp}`);
+      audio.play();
+    };
   </script>
 </body>
 </html>

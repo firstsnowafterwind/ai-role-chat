@@ -1,0 +1,15 @@
+# --- Web 框架 ---
+Flask==2.3.2
+
+# --- Microsoft Edge 语音合成 ---
+edge-tts==6.1.5
+
+# --- 音频处理 ---
+pydub==0.25.1
+soundfile==0.12.1
+librosa==0.10.1
+
+# --- AI 语音识别 ---
+openai-whisper==20231117
+torch>=1.12
+numpy>=1.21
