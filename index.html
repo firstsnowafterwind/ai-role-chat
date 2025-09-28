@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>ASR + 网页端 TTS Demo</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 2rem; }
+    button { margin-right: .5rem; }
+    .box { background:#f6f7f8; padding:.75rem; border-radius:.5rem; white-space:pre-wrap; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:.5rem 0; }
+  </style>
+</head>
+<body>
+  <h2>🎤 录音上传 → Whisper 转写 → 处理 → 网页端朗读</h2>
+
+  <div class="row">
+    <button id="startBtn">开始录音</button>
+    <button id="stopBtn" disabled>停止并上传</button>
+    <button id="speakBtn" disabled>朗读处理后的文本</button>
+  </div>
+
+  <div>状态：<span id="status">待命</span></div>
+
+  <h3>原始识别文本</h3>
+  <div id="rawBox" class="box">（等待上传…）</div>
+
+  <h3>处理后文本</h3>
+  <div id="procBox" class="box">（等待上传…）</div>
+
+  <script>
+    let mediaRecorder, chunks = [], chosenMime = '';
+    let currentProcessedText = '';
+    let currentTTS = { lang: 'zh-CN', rate: 1.0, pitch: 1.0, voice: null };
+
+    const statusEl = document.getElementById('status');
+    const rawBox   = document.getElementById('rawBox');
+    const procBox  = document.getElementById('procBox');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn  = document.getElementById('stopBtn');
+    const speakBtn = document.getElementById('speakBtn');
+
+    function pickMimeType() {
+      const candidates = [
+        'audio/webm;codecs=opus', 'audio/webm',
+        'audio/mp4', 'audio/aac', 'audio/wav'
+      ];
+      for (const m of candidates) {
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) return m;
+      }
+      return '';
+    }
+
+    async function startRecording() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        chosenMime = pickMimeType();
+        mediaRecorder = chosenMime ? new MediaRecorder(stream, { mimeType: chosenMime }) : new MediaRecorder(stream);
+        chunks = [];
+
+        mediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+        mediaRecorder.onstart = () => {
+          statusEl.textContent = `录音中…（${chosenMime || '浏览器默认'}）`;
+          startBtn.disabled = true; stopBtn.disabled = false; speakBtn.disabled = true;
+          rawBox.textContent = '（录音中…）'; procBox.textContent = '（录音中…）';
+        };
+        mediaRecorder.onstop = async () => {
+          statusEl.textContent = '上传中…';
+          const blobType = chosenMime || 'audio/webm';
+          const ext = blobType.includes('mp4') ? 'mp4' : blobType.includes('aac') ? 'aac' : blobType.includes('wav') ? 'wav' : 'webm';
+          const blob = new Blob(chunks, { type: blobType });
+
+          const fd = new FormData();
+          fd.append('audio', blob, `recording.${ext}`);
+
+          const res = await fetch('/api/transcribe?language=zh', { method:'POST', body: fd });
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+
+          rawBox.textContent  = data.raw_text || '';
+          procBox.textContent = data.processed_text || '';
+          currentProcessedText = data.processed_text || '';
+          currentTTS = Object.assign(currentTTS, data.tts || {});
+
+          statusEl.textContent = '完成';
+          speakBtn.disabled = !currentProcessedText;
+          startBtn.disabled = false; stopBtn.disabled = true;
+        };
+
+        mediaRecorder.start();
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = '录音失败：' + e.message;
+      }
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        statusEl.textContent = '结束录音…';
+      }
+    }
+
+    function speakTextBrowserTTS(text, tts) {
+      if (!text) return;
+      if (!('speechSynthesis' in window)) {
+        alert('当前浏览器不支持 speechSynthesis。请用 Edge/Chrome/Safari 等。');
+        return;
+      }
+      // 防止重叠
+      speechSynthesis.cancel();
+
+      const u = new SpeechSynthesisUtterance(text);
+      // 优先 voice 名称（若匹配失败再用 lang）
+      const voices = speechSynthesis.getVoices();
+      if (tts && tts.voice) {
+        const match = voices.find(v => v.name === tts.voice);
+        if (match) u.voice = match;
+      }
+      if (tts && tts.lang)  u.lang  = tts.lang;
+      if (tts && tts.rate)  u.rate  = Math.min(Math.max(Number(tts.rate)  || 1.0, 0.5), 2.0);
+      if (tts && tts.pitch) u.pitch = Math.min(Math.max(Number(tts.pitch) || 1.0, 0.0), 2.0);
+
+      speechSynthesis.speak(u);
+    }
+
+    startBtn.addEventListener('click', startRecording);
+    stopBtn.addEventListener('click',  stopRecording);
+    speakBtn.addEventListener('click', () => speakTextBrowserTTS(currentProcessedText, currentTTS));
+
+    // 某些浏览器需要等语音列表加载
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = () => {};
+    }
+  </script>
+</body>
+</html>
