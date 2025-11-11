@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>聊天 · Flask</title>
+    <link rel="stylesheet" href="/static/css/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>聊天</h1>
+      <div class="layout">
+        <aside class="sidebar">
+          <button class="chat-tab active" data-chat="chat1" title="会话 chat1">
+            <img class="chat-avatar" alt="chat1" />
+            <span class="chat-name">chat1</span>
+          </button>
+          <button class="chat-tab" data-chat="chat2" title="会话 chat2">
+            <img class="chat-avatar" alt="chat2" />
+            <span class="chat-name">chat2</span>
+          </button>
+        </aside>
+        <section class="main">
+          <div class="chat-box" id="output"></div>
+          <div class="input-row">
+            <input id="message" type="text" placeholder="输入消息..." />
+            <button id="tts" class="icon-btn" title="朗读开/关" aria-label="朗读">🔊</button>
+            <button id="mic" class="icon-btn" title="语音输入" aria-label="语音输入">🎤</button>
+            <button id="send">发送</button>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script src="/static/js/voice.js"></script>
+    <script src="/static/js/tts.js"></script>
+    <script src="/static/js/app.js"></script>
+  </body>
+  </html>
