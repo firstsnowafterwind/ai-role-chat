@@ -10,4 +10,3 @@ class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
     # Placeholder for database URI or other configs
     SQLALCHEMY_DATABASE_URI = os.getenv("DB_URI", "sqlite:///:memory:")
-

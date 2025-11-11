@@ -21,7 +21,9 @@ def create_app():
 
     # Register blueprints
     from .routes.chat_routes import chat_bp
+    from .routes.tts_routes import tts_bp
     app.register_blueprint(chat_bp)
+    app.register_blueprint(tts_bp)
 
     # Serve frontend index
     from flask import send_from_directory
