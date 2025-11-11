@@ -74,9 +74,9 @@ async function sendMessage() {
     if (!res.ok) throw new Error(data.error || '请求失败');
     appendMessage(data.reply, 'bot');
     chats[activeChat].push({ who: 'bot', text: data.reply });
-    // chat1 使用服务端 edge-tts，chat2 仍用浏览器 TTS
+    // chat1 使用服务端 edge-tts（传 chat 与 emotion，可由后端自动分析）
     if (activeChat === 'chat1' && typeof playServerTTS === 'function') {
-      const ok = await playServerTTS(data.reply, 'zh-CN-YunxiNeural', '-10%', '+2Hz');
+      const ok = await playServerTTS(data.reply, { chat: activeChat });
       if (!ok && tts && tts.isEnabled && tts.isEnabled()) {
         tts.speak(data.reply, CHAT_VOICE_PREF[activeChat]);
       }

@@ -51,13 +51,23 @@
   global.createTTS = createTTS;
 
   // 服务端 TTS（edge-tts）播放：POST /api/tts，返回 mp3 字节后直接播放
-  async function playServerTTS(text, voice, rate, pitch) {
+  async function playServerTTS(text, optsOrVoice, rate, pitch) {
     if (!text) return false;
     try {
+      let payload;
+      if (typeof optsOrVoice === 'object' && optsOrVoice !== null) {
+        // new signature: { chat, emotion }
+        const { chat, emotion } = optsOrVoice;
+        payload = { text, chat, emotion };
+      } else {
+        // backward-compat signature: (text, voice, rate, pitch)
+        payload = { text, voice: optsOrVoice, rate, pitch };
+      }
+
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice, rate, pitch })
+        body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error('Server TTS failed');
       const blob = await res.blob();
